@@ -51,14 +51,22 @@ const game=new Game($('#gc'),{score:n=>{$('#sc').textContent=n;if(typeof L!=='un
 count(n){const c=$('#cd');c.textContent=n;c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');ov.classList.remove('on')},
 pause(){panel('<h2>Paused</h2><button class="btn b1" id="o1">Resume</button><button class="btn b2" id="o2">Restart</button><button class="btn b3" id="o3">Main menu</button>');
 $('#o1').onclick=()=>{ov.classList.remove('on');game.resume()};$('#o2').onclick=async()=>{await bank();startRun()};$('#o3').onclick=async()=>{await bank();show('home')}},
-over(){if(L.active)return L.over();const best=Math.max(S.me?.highScore||0,game.score|0),left=run.id&&!game.rev&&S.me,can=left&&bal()>=10;
+over(){if(L.active)return L.over();const r0=run,draw=()=>{const best=Math.max(S.me?.highScore||0,game.score|0),left=run.id&&!game.rev&&S.me,can=left&&bal()>=10;
 panel(`<h2>Crashed</h2><p>Score <b>${game.score|0}</b> · Best <b>${best}</b></p><p>Coins this run <b>${game.coins}</b> · Balance <b>${bal()}</b></p>`+
 (run.id?`<button class="btn b1" id="o1" ${can?'':'disabled'}>Revive — 10 Coins</button><p>${game.rev?'Revive already used this run.':bal()<10?'Not enough coins to revive.':'1 revive per run.'}</p>`:'<p>Guest run: nothing is saved. Sign in to bank coins.</p>')+
 '<button class="btn b2" id="o2">Play again</button><button class="btn b3" id="o3">Main menu</button>');
 if(run.id)$('#o1').onclick=async()=>{try{const r=await api(`/runs/${run.id}/revive`,'POST');S.me.currency=r.currency;game.rev=1;ov.classList.remove('on');game.revive()}catch(x){toast(x.message,1)}};
-$('#o2').onclick=async()=>{await bank();startRun()};$('#o3').onclick=async()=>{await bank();show('home')}}});
+$('#o2').onclick=async()=>{await bank();startRun()};$('#o3').onclick=async()=>{await bank();show('home')}};
+draw();if(r0.id&&(game.rev||bal()<10))bank().then(()=>{if(run===r0&&game.mode==='over')draw()})}});
 function panel(h){ov.innerHTML='<div class="ovbox">'+h+'</div>';ov.classList.add('on')}
-async function bank(){if(!run||run.done)return;run.done=true;if(!run.id)return;try{const r=await api(`/runs/${run.id}/finish`,'POST',{score:game.score|0,coins:game.coins});S.me=r.player;if(r.newHighScore)toast('New high score!')}catch(e){toast(e.message,1)}}
+// Saves the current run to the server. Safe to call repeatedly: one request per run, and callers can await it.
+// Only a network failure (no HTTP status) re-arms it for a retry; a server verdict (4xx) is final.
+function bank(){const r=run;if(!r||!r.id)return Promise.resolve();if(r.p)return r.p;r.done=true;
+return r.p=(async()=>{try{const x=await api(`/runs/${r.id}/finish`,'POST',{score:game.score|0,coins:game.coins});S.me=x.player;if(x.newHighScore)toast('New high score!')}
+catch(e){if(!e.status){r.p=null;r.done=false}toast(e.message,1)}})()}
+// Tab closed / refreshed / app swiped away after a crash: still deliver the result.
+addEventListener('pagehide',()=>{const r=run;if(!r||!r.id||r.p||r.lobby||!S.token||!['over','play','pause'].includes(game.mode))return;r.done=true;r.p=Promise.resolve();
+try{fetch(API_URL+`/api/runs/${r.id}/finish`,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({score:game.score|0,coins:game.coins})})}catch{}});
 async function startRun(){if(typeof L!=='undefined')L.active=false;$('#pause').hidden=false;show('game');ov.classList.remove('on');$('#sc').textContent=0;$('#gcn').textContent=0;run={id:null,done:false};
 if(S.me)try{run.id=(await api('/runs','POST',{})).runId}catch(e){toast(e.message,1);return show('home')}
 $('.stage').className='stage '+(isLight(mapKey())?'lt':'dk');game.reset(mapKey(),skinKey());game.startCountdown()}
